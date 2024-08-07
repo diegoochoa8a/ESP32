@@ -2,157 +2,183 @@
 
 #define CAMERA_MODEL_AI_THINKER // Has PSRAM
 #include "camera_pins.h"
+#define FLASH_LED_PIN 4
 
 //Checks for new messages every 1 second.
 int botRequestDelay = 1000;
 unsigned long lastTimeBotRan;
 
-extern bool sendPhoto = false;
-
-
-extern bool flashState = LOW;
+extern bool sendPhotoTele = false;
+extern bool statePhotoFlashTele = false;
+extern bool stateFlashTele = false;;
 
 
 
 // Initialize Telegram BOT
-extern String BOTtoken = "XXXXXXXXXX:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX";  // your Bot Token (Get from Botfather)
+extern String BOTtoken = "7371552171:AAEsp0kzv_3knU0AdLYPfR2vA0j3C7DwVY8";  // your Bot Token (Get from Botfather)
 
 // Use @myidbot to find out the chat ID of an individual or a group
 // Also note that you need to click "start" on a bot before it can
 // message you
-extern String CHAT_ID = "XXXXXXXXXX";
+extern String CHAT_ID = "1286685600";
 
 
 // Función para inicializar el bot
 void initBotTelegram(UniversalTelegramBot &bot) {
-    Serial.println("Bot initialized");
+  pinMode(FLASH_LED_PIN, OUTPUT);
+  Serial.println("Bot TELEGRAM initialized");  
 }
 
 
 void handleNewMessages(UniversalTelegramBot &bot) {
     if (millis() > lastTimeBotRan + botRequestDelay){
         int numNewMessages = bot.getUpdates(bot.last_message_received + 1);
+        if (numNewMessages > 0){
+          Serial.print("Handle New Messages: ");
+          Serial.println(numNewMessages);
 
-        Serial.print("Handle New Messages: ");
-        Serial.println(numNewMessages);
-
-        for (int i = 0; i < numNewMessages; i++) {
-            String chat_id = String(bot.messages[i].chat_id);
-            if (chat_id != CHAT_ID){
-            bot.sendMessage(chat_id, "Unauthorized user", "");
-            continue;
-            }
-            
-            // Print the received message
-            String text = bot.messages[i].text;
-            Serial.println(text);
-            
-            String from_name = bot.messages[i].from_name;
-            if (text == "/start") {
-            String welcome = "Welcome , " + from_name + "\n";
-            welcome += "Use the following commands to interact with the ESP32-CAM \n";
-            welcome += "/photo : takes a new photo\n";
-            welcome += "/flash : toggles flash LED \n";
-            bot.sendMessage(CHAT_ID, welcome, "");
-            }
-            if (text == "/flash") {
-            flashState = !flashState;
-            digitalWrite(LED_GPIO_NUM, flashState);
-            Serial.println("Change flash LED state");
-            }
-            if (text == "/photo") {
-            sendPhoto = true;
-            Serial.println("New photo request");
-            }
+          for (int i = 0; i < numNewMessages; i++) {
+              String chat_id = String(bot.messages[i].chat_id);
+              if (chat_id != CHAT_ID){
+              bot.sendMessage(chat_id, "Unauthorized user", "");
+              continue;
+              }
+              
+              // Print the received message
+              String text = bot.messages[i].text;
+              Serial.println(text);
+              
+              String from_name = bot.messages[i].from_name;
+              if (text == "/start") {
+              String welcome = "Welcome , " + from_name + "\n";
+              welcome += "Use the following commands to interact with the ESP32-CAM \n";
+              welcome += "/photo : takes a new photo\n";
+              welcome += "/photoflash : takes a new photo with flash LED\n";
+              welcome += "/flashON : toggles flash LED ON \n";
+              welcome += "/flashOFF : toggles flash LED OFF \n";
+              bot.sendMessage(CHAT_ID, welcome, "");
+              }
+              if (text == "/flashON") {
+                digitalWrite(FLASH_LED_PIN, 1);
+                delay(100);
+                Serial.println("Change flash LED ON");
+              }
+              if (text == "/flashOFF") {
+                digitalWrite(FLASH_LED_PIN, 0);
+                delay(100);
+                Serial.println("Change flash LED OFF");
+              }
+              if (text == "/photo") {
+                sendPhotoTele = true;
+                statePhotoFlashTele = false;
+                Serial.println("New photo request");
+              }
+              if (text == "/photoflash") {
+                sendPhotoTele = true;
+                statePhotoFlashTele = true;
+                Serial.println("New photo request with flash");
+              }
+          }
         }
         lastTimeBotRan = millis();
     }
 }
 
+bool isMoreDataAvailable();
+byte *getNextBuffer();
+int getNextBufferLen();
+camera_fb_t *fb = NULL;
+bool dataAvailable = false;
 
-String sendPhotoTelegram(WiFiClientSecure clientTCP) {
-  const char* myDomain = "api.telegram.org";
-  String getAll = "";
-  String getBody = "";
+bool sendPhotoTelegramDirect(UniversalTelegramBot bot) {
+  Serial.println("Enter sendPhotoTelegramDirect");
+
+  if (statePhotoFlashTele) {
+    Serial.println("On FLASH");
+    digitalWrite(FLASH_LED_PIN, 1);
+  }
 
   //Dispose first picture because of bad quality
-  camera_fb_t * fb = NULL;
-  fb = esp_camera_fb_get();
-  esp_camera_fb_return(fb); // dispose the buffered image
-  
-  // Take a new photo
-  fb = NULL;  
+  fb = NULL;
   fb = esp_camera_fb_get();  
   if(!fb) {
-    Serial.println("Camera capture failed");
+    Serial.println("Camera capture failed TELEGRAM");
     delay(1000);
-    ESP.restart();
-    return "Camera capture failed";
-  }  
-  
-  Serial.println("Connect to " + String(myDomain));
+    //ESP.restart();
+    return false;
+  }else{
+    Serial.println("Camera capture OK TELEGRAM");
+  }
 
+  dataAvailable = true;
+  Serial.println("Sending Photo direct");
+  String response = bot.sendPhotoByBinary(CHAT_ID, "image/jpeg", fb->len,
+                        isMoreDataAvailable, nullptr,
+                        getNextBuffer, getNextBufferLen);
+  Serial.println(response);
+  // Parse the response
+  DynamicJsonDocument doc(2048);
+  DeserializationError error = deserializeJson(doc, response);
 
-  if (clientTCP.connect(myDomain, 443)) {
-    Serial.println("Connection successful");
-    
-    String head = "--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"chat_id\"; \r\n\r\n" + CHAT_ID + "\r\n--RandomNerdTutorials\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"esp32-cam.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n";
-    String tail = "\r\n--RandomNerdTutorials--\r\n";
-
-    size_t imageLen = fb->len;
-    size_t extraLen = head.length() + tail.length();
-    size_t totalLen = imageLen + extraLen;
-  
-    clientTCP.println("POST /bot"+BOTtoken+"/sendPhoto HTTP/1.1");
-    clientTCP.println("Host: " + String(myDomain));
-    clientTCP.println("Content-Length: " + String(totalLen));
-    clientTCP.println("Content-Type: multipart/form-data; boundary=RandomNerdTutorials");
-    clientTCP.println();
-    clientTCP.print(head);
-  
-    uint8_t *fbBuf = fb->buf;
-    size_t fbLen = fb->len;
-    for (size_t n=0;n<fbLen;n=n+1024) {
-      if (n+1024<fbLen) {
-        clientTCP.write(fbBuf, 1024);
-        fbBuf += 1024;
-      }
-      else if (fbLen%1024>0) {
-        size_t remainder = fbLen%1024;
-        clientTCP.write(fbBuf, remainder);
-      }
-    }  
-    
-    clientTCP.print(tail);
-    
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
     esp_camera_fb_return(fb);
-    
-    int waitTime = 10000;   // timeout 10 seconds
-    long startTimer = millis();
-    boolean state = false;
-    
-    while ((startTimer + waitTime) > millis()){
-      Serial.print(".");
-      delay(100);      
-      while (clientTCP.available()) {
-        char c = clientTCP.read();
-        if (state==true) getBody += String(c);        
-        if (c == '\n') {
-          if (getAll.length()==0) state=true; 
-          getAll = "";
-        } 
-        else if (c != '\r')
-          getAll += String(c);
-        startTimer = millis();
-      }
-      if (getBody.length()>0) break;
-    }
-    clientTCP.stop();
-    Serial.println(getBody);
+    return false;
   }
-  else {
-    getBody="Connected to api.telegram.org failed.";
-    Serial.println("Connected to api.telegram.org failed.");
+
+  bool success = doc["ok"];
+  
+  if (!success) {
+    Serial.println("Sending Photo failed!");
+    esp_camera_fb_return(fb);
+    return false;
   }
-  return getBody;
+
+  Serial.println("Sending Photo direct done!");
+  esp_camera_fb_return(fb);
+
+  if (statePhotoFlashTele){
+    Serial.println("Off FLASH");
+    digitalWrite(FLASH_LED_PIN, 0);
+  }
+
+  return true;
+}
+
+bool isMoreDataAvailable()
+{
+  if (dataAvailable)
+  {
+    dataAvailable = false;
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+byte *getNextBuffer()
+{
+  if (fb)
+  {
+    return fb->buf;
+  }
+  else
+  {
+    return nullptr;
+  }
+}
+
+int getNextBufferLen()
+{
+  if (fb)
+  {
+    return fb->len;
+  }
+  else
+  {
+    return 0;
+  }
 }

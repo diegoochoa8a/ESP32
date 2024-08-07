@@ -17,6 +17,10 @@
 #define CAMERA_MODEL_AI_THINKER // Has PSRAM
 #include "camera_pins.h"
 
+bool flashState = LOW;
+#define FLASH_LED_PIN 4
+
+
 // ===========================
 // Enter your WiFi credentials
 // ===========================
@@ -24,6 +28,7 @@ const char *ssid = "HW-AO";
 const char *password = "4rb3l43z0ch04";
 
 
+//Telegram BOT
 WiFiClientSecure clientTCP;
 UniversalTelegramBot bot(BOTtoken, clientTCP);
 
@@ -111,6 +116,11 @@ void setup() {
   Serial.setDebugOutput(true);
   Serial.println();
 
+  pinMode(FLASH_LED_PIN, OUTPUT);
+  digitalWrite(FLASH_LED_PIN, !flashState);
+  delay(500);
+  digitalWrite(FLASH_LED_PIN, flashState);
+
   // Config and init the camera
   configInitCamera();
  
@@ -126,12 +136,12 @@ void setup() {
   }
   Serial.println("");
   Serial.println("Esp32 CAM TELEGRAM WiFi connected");
+  Serial.println(WiFi.localIP());
 
-  startCameraServer();
-
-  Serial.print("Camera Ready! Use 'http://");
-  Serial.print(WiFi.localIP());
-  Serial.println("' to connect");
+  //startCameraServer(); STREAM
+  //Serial.print("Camera Ready! Use 'http://");
+  //Serial.print(WiFi.localIP());
+  //Serial.println("' to connect");
 
   initBotTelegram(bot);
 
@@ -139,12 +149,11 @@ void setup() {
 }
 
 void loop() {
-  if (sendPhoto) {
-    Serial.println("Preparing photo");
-    sendPhotoTelegram(clientTCP); 
-    sendPhoto = false; 
+  if (sendPhotoTele) {
+    sendPhotoTele = false; 
+    Serial.println("Preparing PHOTO");
+    sendPhotoTelegramDirect(bot);
   }
-
   handleNewMessages(bot);
 
   delay(100);

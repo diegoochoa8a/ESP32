@@ -9,13 +9,15 @@
 #include <UniversalTelegramBot.h>
 #include <ArduinoJson.h>
 
-extern bool sendPhoto ;
+extern bool sendPhotoTele ;
+extern bool statePhotoFlashTele ;
+extern bool stateFlashTele ;
 extern String BOTtoken ;
 extern String CHAT_ID ;
-extern bool flashState ;
 
 void initBotTelegram(UniversalTelegramBot &bot);
 void handleNewMessages(UniversalTelegramBot &bot);
 String sendPhotoTelegram(WiFiClientSecure clientTCP);
+bool sendPhotoTelegramDirect(UniversalTelegramBot bot);
 
 #endif
